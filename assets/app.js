@@ -2,18 +2,6 @@
 function requestRender(){const a=document.activeElement;if(a&&a.matches&&a.matches('#main input,#main textarea,#main select')){pendingRender=true;return}render()}
 let pendingRender=false;document.addEventListener('focusout',()=>{setTimeout(()=>{if(pendingRender){const a=document.activeElement;if(!(a&&a.matches&&a.matches('#main input,#main textarea,#main select'))){pendingRender=false;render()}}},200)});
 async function addOscola(){const st=await put('style',{name:'OSCOLA',description:'For legal citations'});for(const t of TEMPLATES.filter(t=>t.style==='OSCOLA'))await put('type',{name:t.name,citation_style_id:st.id,fields:stamp(t.fields)});G.style=st;render();toast('OSCOLA added with its source types')}
-/* ---------- modal ---------- */
-const stack=[];
-function modal(title,build,{width=520,titleIcon}={}){const body=h('div',{class:'mb'}),foot=h('footer');
- const close=()=>{ov.remove();stack.splice(stack.indexOf(close),1);document.removeEventListener('keydown',onKey)};
- const onKey=e=>{if(e.key==='Escape'&&stack[stack.length-1]===close)close()};
- const box=h('div',{class:'modal',role:'dialog','aria-modal':'true','aria-label':title,style:`max-width:${width}px`},h('header',null,titleIcon&&icon(titleIcon),title),ibtn('x',()=>close(),'Close','x'),body,foot);
- const ov=h('div',{class:'overlay',onmousedown:e=>{if(e.target===ov)close()}},box);
- document.getElementById('modals').append(ov);stack.push(close);document.addEventListener('keydown',onKey);
- const refresh=()=>{body.replaceChildren();foot.replaceChildren();build(body,foot,close,refresh);foot.hidden=!foot.childElementCount};
- refresh();const f=body.querySelector('input,textarea');if(f)f.focus();return close}
-function confirmBox(title,text,label,fn){modal(title,(b,f,close)=>{b.append(h('p',null,text));f.append(btn('Cancel',close),btn(label,()=>{close();fn()},'pri'))},{width:420})}
-function field(label,el,small){return h('div',null,h('label',{class:'l'+(small?' s':'')},label),el)}
 /* ---------- routing and generator state ---------- */
 let route=(location.hash||'').slice(1)||'generator';
 window.addEventListener('hashchange',()=>{const r=location.hash.slice(1)||'generator';if(r!==route){route=r;render()}});

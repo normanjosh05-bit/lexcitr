@@ -153,3 +153,15 @@ T('SA Comp Commission Publication','OSCOLA',[['Author','',', '],['Title','',' ',
 T('Institutional Document (e.g. OECD)','OSCOLA',[['Author','',', '],['Title',"'","' "],['Additional Info','(',')']]),
 T('Institutional Report (e.g. OECD Recommendation)','MLA',[['Full Name of Institution','',', '],['Title of Publication','',' ',1],['Document Number','',' '],['Date','(adopted ',') '],['URL','<','>']])];
 const stamp=fields=>fields.map((f,i)=>({...f,id:Date.now().toString(36)+i+Math.random().toString(36).slice(2,5),infix:f.infix||'',order:i}));
+/* ---------- modal ---------- */
+const stack=[];
+function modal(title,build,{width=520,titleIcon}={}){const body=h('div',{class:'mb'}),foot=h('footer');
+ const close=()=>{ov.remove();stack.splice(stack.indexOf(close),1);document.removeEventListener('keydown',onKey)};
+ const onKey=e=>{if(e.key==='Escape'&&stack[stack.length-1]===close)close()};
+ const box=h('div',{class:'modal',role:'dialog','aria-modal':'true','aria-label':title,style:`max-width:${width}px`},h('header',null,titleIcon&&icon(titleIcon),title),ibtn('x',()=>close(),'Close','x'),body,foot);
+ const ov=h('div',{class:'overlay',onmousedown:e=>{if(e.target===ov)close()}},box);
+ document.getElementById('modals').append(ov);stack.push(close);document.addEventListener('keydown',onKey);
+ const refresh=()=>{body.replaceChildren();foot.replaceChildren();build(body,foot,close,refresh);foot.hidden=!foot.childElementCount};
+ refresh();const f=body.querySelector('input,textarea');if(f)f.focus();return close}
+function confirmBox(title,text,label,fn){modal(title,(b,f,close)=>{b.append(h('p',null,text));f.append(btn('Cancel',close),btn(label,()=>{close();fn()},'pri'))},{width:420})}
+function field(label,el,small){return h('div',null,h('label',{class:'l'+(small?' s':'')},label),el)}

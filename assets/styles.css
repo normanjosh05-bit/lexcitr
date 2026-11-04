@@ -177,3 +177,20 @@ label.l.s{font-size:12px;color:var(--muted);font-weight:400}
 .tp select.in,.tp input.in{min-width:0}
 .tp-body>.btn{flex:none}
 .tp-used{float:right;font-weight:600;color:var(--purple-fg)}
+
+.tp-brand{display:flex;align-items:center;gap:10px;padding:10px 12px;background:linear-gradient(90deg,var(--head1),var(--head2));color:#fff}
+.tp-brand h1{font-size:15px;line-height:1.2}.tp-brand p{font-size:11px;opacity:.85}
+.tp-logo{width:34px;height:34px;flex:none;background:#fff;border:0;border-radius:8px;display:grid;place-items:center;font-size:18px;cursor:pointer;box-shadow:var(--shadow)}
+.tp-brand .btn{color:#fff;border-color:rgba(255,255,255,.45);background:transparent}.tp-brand .btn:hover:not(:disabled){background:rgba(255,255,255,.15)}
+.tp-dcard{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--surface);border:2px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;box-shadow:var(--shadow);flex:none}
+.tp-dcard:hover{border-color:var(--accent-line)}.tp-dcard .ic{width:38px;height:38px;flex:none;border-radius:9px;display:grid;place-items:center;color:#fff}.tp-dcard .ic svg{width:20px;height:20px}
+.tp-dcard b{display:block;font-size:15px;font-weight:600}.tp-dcard .d{display:block;font-size:12px;line-height:1.3;color:var(--muted)}
+.tp .step{padding:8px 10px;gap:10px}.tp .num{width:26px;height:26px;font-size:13px}.tp .step b{font-size:13px}
+.tp .tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.tp .tile{padding:10px 8px}.tp .tile svg.i{width:20px;height:20px}.tp .tile b{font-size:13px}
+.tp .h2{font-size:15px}.tp-field{padding:10px;gap:8px}
+.tp-lib{display:flex;align-items:center;gap:2px;border-radius:8px;flex:none}.tp .stack.t,.tp-body>*{flex:none}
+.tp-cit{padding:10px;display:flex;flex-direction:column;gap:8px}.tp-citacts{display:flex;align-items:center;gap:4px;flex-wrap:wrap}
+.tp-used{float:none;margin-left:auto;font-size:12px}
+.tp .modal .mb{padding:8px 14px}.tp-back b:empty{display:none}
+.overlay{padding:10px}
+.tp-citacts{flex-wrap:nowrap;gap:2px}.tp-citacts .btn.icon{width:26px;min-height:28px}.tp-citacts .btn.sm{padding:3px 8px}
