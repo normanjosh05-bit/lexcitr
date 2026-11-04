@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="TaskPaneApp">
+  <Id>001f2384-e22e-4280-beca-da9297167c7a</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>Josh Norman</ProviderName>
+  <DefaultLocale>en-GB</DefaultLocale>
+  <DisplayName DefaultValue="LexCitr"/>
+  <Description DefaultValue="Insert formatted citations from your LexCitr library as Word footnotes."/>
+  <IconUrl DefaultValue="https://normanjosh05-bit.github.io/lexcitr/icons/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://normanjosh05-bit.github.io/lexcitr/icons/icon-64.png"/>
+  <SupportUrl DefaultValue="https://normanjosh05-bit.github.io/lexcitr/"/>
+  <Hosts>
+    <Host Name="Document"/>
+  </Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.1">
+      <Set Name="WordApi" MinVersion="1.5"/>
+    </Sets>
+  </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://normanjosh05-bit.github.io/lexcitr/taskpane.html"/>
+  </DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Document">
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="LexCitr.Group">
+                <Label resid="Group.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="LexCitr.Open">
+                  <Label resid="Button.Label"/>
+                  <Supertip>
+                    <Title resid="Button.Label"/>
+                    <Description resid="Button.Tip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>LexCitrPane</TaskpaneId>
+                    <SourceLocation resid="Pane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://normanjosh05-bit.github.io/lexcitr/icons/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://normanjosh05-bit.github.io/lexcitr/icons/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://normanjosh05-bit.github.io/lexcitr/icons/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Pane.Url" DefaultValue="https://normanjosh05-bit.github.io/lexcitr/taskpane.html"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Group.Label" DefaultValue="LexCitr"/>
+        <bt:String id="Button.Label" DefaultValue="LexCitr Footnote"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Button.Tip" DefaultValue="Open LexCitr to insert a citation as a footnote at your cursor."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

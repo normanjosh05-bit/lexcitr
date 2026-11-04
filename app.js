@@ -1,0 +1,269 @@
+'use strict';
+function requestRender(){const a=document.activeElement;if(a&&a.matches&&a.matches('#main input,#main textarea,#main select')){pendingRender=true;return}render()}
+let pendingRender=false;document.addEventListener('focusout',()=>{setTimeout(()=>{if(pendingRender){const a=document.activeElement;if(!(a&&a.matches&&a.matches('#main input,#main textarea,#main select'))){pendingRender=false;render()}}},200)});
+async function addOscola(){const st=await put('style',{name:'OSCOLA',description:'For legal citations'});for(const t of TEMPLATES.filter(t=>t.style==='OSCOLA'))await put('type',{name:t.name,citation_style_id:st.id,fields:stamp(t.fields)});G.style=st;render();toast('OSCOLA added with its source types')}
+/* ---------- modal ---------- */
+const stack=[];
+function modal(title,build,{width=520,titleIcon}={}){const body=h('div',{class:'mb'}),foot=h('footer');
+ const close=()=>{ov.remove();stack.splice(stack.indexOf(close),1);document.removeEventListener('keydown',onKey)};
+ const onKey=e=>{if(e.key==='Escape'&&stack[stack.length-1]===close)close()};
+ const box=h('div',{class:'modal',role:'dialog','aria-modal':'true','aria-label':title,style:`max-width:${width}px`},h('header',null,titleIcon&&icon(titleIcon),title),ibtn('x',()=>close(),'Close','x'),body,foot);
+ const ov=h('div',{class:'overlay',onmousedown:e=>{if(e.target===ov)close()}},box);
+ document.getElementById('modals').append(ov);stack.push(close);document.addEventListener('keydown',onKey);
+ const refresh=()=>{body.replaceChildren();foot.replaceChildren();build(body,foot,close,refresh);foot.hidden=!foot.childElementCount};
+ refresh();const f=body.querySelector('input,textarea');if(f)f.focus();return close}
+function confirmBox(title,text,label,fn){modal(title,(b,f,close)=>{b.append(h('p',null,text));f.append(btn('Cancel',close),btn(label,()=>{close();fn()},'pri'))},{width:420})}
+function field(label,el,small){return h('div',null,h('label',{class:'l'+(small?' s':'')},label),el)}
+/* ---------- routing and generator state ---------- */
+let route=(location.hash||'').slice(1)||'generator';
+window.addEventListener('hashchange',()=>{const r=location.hash.slice(1)||'generator';if(r!==route){route=r;render()}});
+function go(r,opts){route=r;if(opts)Object.assign(G,opts);try{location.hash=r}catch(e){}render()}
+const blankForm=()=>({values:{},fmt:{},info:{},infoFmt:{},notes:'',multi:{},split:{},names:{},gear:{},bib:{values:{},fmt:{},info:{},infoFmt:{}},tab:'footnote',savedId:null,dirty:false});
+const G={style:null,type:null,library:null,view:'create',editing:null,mode:null,form:blankForm(),sideOpen:false};
+const cur=(k,o)=>o&&S[k].find(x=>x.id===o.id)||null;
+function loadForm(c){const F=blankForm();if(c){F.values=clone(c.field_values||{});F.notes=c.notes||'';F.fmt=clone(c.custom_formatting||{});F.info=clone(c.additional_info||{});F.infoFmt=clone(c.additional_info_formatting||{});F.bib={values:clone(c.bibliography_field_values||{}),fmt:clone(c.bibliography_custom_formatting||{}),info:clone(c.bibliography_additional_info||{}),infoFmt:clone(c.bibliography_additional_info_formatting||{})};
+  const t=typeOf(c);(t&&t.fields||[]).forEach(f=>{const v=F.values[f.name]||'';if(v.includes('|||'))F.multi[f.id]=true;else if(v.includes('|'))F.split[f.id]=true})}
+ G.form=F}
+const clone=o=>JSON.parse(JSON.stringify(o));
+function selectType(t){G.type=t;G.editing=null;loadForm(null);render()}
+function editCitation(c){G.style=S.style.find(s=>s.id===c.citation_style_id)||null;G.type=typeOf(c)||null;G.library=S.library.find(l=>l.id===c.library_id)||(c.library_id?null:{id:'uncategorized',name:'Uncategorized'});G.editing=c;G.view='create';loadForm(c);go('generator')}
+function stepNo(){const lib=G.library,s=G.style,t=G.type;if(G.mode==='new'||G.mode==='existing')return lib?(s?(t?3:2):1):0;return s?(t?3:2):1}
+/* ---------- render ---------- */
+function render(){G.style=cur('style',G.style)||(storeMode==='loading'?G.style:null);G.type=cur('type',G.type)||(storeMode==='loading'?G.type:null);if(G.library&&G.library.id!=='uncategorized')G.library=cur('library',G.library);
+ const old=document.getElementById('main'),top=old?old.scrollTop:0,a=document.getElementById('app');a.replaceChildren(route==='dashboard'?dashboard():route==='new-project'?newProjectPage():route==='citation-styles'?stylesPage():route==='all-citations'?allPage():route==='source-types'?typesPage():generator());const nw=document.getElementById('main');if(nw&&top)nw.scrollTop=top}
+const statusBar=()=>[storeNote&&h('div',{class:'banner'},storeNote)];
+/* dashboard */
+function dashboard(){
+ const cards=[['New Project','Start creating citations from scratch','plus','linear-gradient(135deg,#6366f1,#a855f7)',()=>{Object.assign(G,{mode:'new',library:null,style:null,type:null,view:'create',editing:null});npName='';go('new-project')}],
+ ['Existing Project','Continue adding to your citation library','folder','linear-gradient(135deg,#3b82f6,#06b6d4)',()=>{Object.assign(G,{mode:'existing',library:null,style:null,type:null,view:'create',editing:null});go('generator');existingProject()}],
+ ['All Citations','View and manage all your citations','lib','linear-gradient(135deg,#22c55e,#10b981)',()=>go('all-citations')],
+ ['Citation Styles','Manage your citation styles','book','linear-gradient(135deg,#ec4899,#8b5cf6)',()=>go('citation-styles')],
+ ['Source Types','Manage your citation source types','gear','linear-gradient(135deg,#f97316,#ef4444)',()=>go('source-types')],
+ ['Back Up','Save or restore a copy of your data','export','linear-gradient(135deg,#64748b,#334155)',backupDialog]];
+ return h('div',{class:'page'},h('div',{class:'dash'},h('div',{class:'row between wrap'},h('div',null,h('h1',null,'Citation Generator'),h('p',{class:'muted'},'Format citations perfectly')),btn('Log Out',signOut)),statusBar(),
+  h('div',{class:'dgrid'},cards.map(([t,d,i,g,on])=>h('button',{type:'button',class:'dcard',onclick:on},h('span',{class:'ic',style:`background:${g}`},icon(i)),h('b',null,t),h('span',{class:'d'},d))))))}
+function backupDialog(){modal('Back Up',(b,f,close)=>{b.append(h('p',{class:'muted'},'Save a copy of your styles, source types, citations and libraries, or restore from a saved copy.'));f.append(btn('Restore',()=>{close();importData()},'','import'),btn('Back up',()=>{close();exportData()},'pri','export'))},{width:440})}
+let npName='';
+function newProjectPage(){
+ const start=()=>{if(!npName.trim()||!G.style)return;put('library',{name:npName.trim(),color:'indigo'}).then(l=>{Object.assign(G,{library:l,mode:'new',type:null,view:'create',editing:null});go('generator')})};
+ const cont=btn('Continue',start,'pri','',{disabled:!npName.trim()||!G.style});
+ return h('div',{class:'page',id:'main'},h('div',{class:'dash',style:'gap:24px'},h('div',{class:'row wrap',style:'gap:16px'},btn('Back to Dashboard',()=>go('dashboard'),'','back'),h('h1',{style:'font-size:28px'},'New Project')),statusBar(),
+  field('Project Name',h('input',{class:'in',id:'proj-name',value:npName,placeholder:'e.g., My Research Paper',oninput:e=>{npName=e.target.value;cont.disabled=!npName.trim()||!G.style},onkeydown:e=>{if(e.key==='Enter')start()}})),
+  h('div',{class:'stack'},h('div',{class:'row between wrap'},h('h2',{class:'h2'},'Select Citation Style'),btn('New Style',()=>styleDialog(),'sm','plus')),
+   S.style.length?h('div',{class:'tiles'},S.style.map(s=>{const on=G.style&&G.style.id===s.id;return h('button',{type:'button',class:'tile','aria-pressed':on?'true':'false',style:on?'border-color:var(--accent);background:var(--accent-soft);outline:1px solid var(--accent)':null,onclick:()=>{G.style=s;render()}},icon('book'),h('b',null,s.name),s.description&&h('span',{class:'small muted'},s.description))}))
+   :h('div',{class:'empty'},h('p',null,'No citation styles yet. Add OSCOLA or create your own to start this project.'),h('div',{class:'row wrap',style:'justify-content:center'},btn('Add OSCOLA with its source types',addOscola,'pri','plus'),btn('Create my own style',()=>styleDialog())))),
+  h('div',{class:'row',style:'justify-content:flex-end'},cont)))}
+function stylesPage(){
+ const count=s=>S.type.filter(t=>t.citation_style_id===s.id).length,used=s=>S.citation.filter(c=>c.citation_style_id===s.id).length;
+ const remove=s=>{const n=used(s);if(n){toast(`${n} citation${n===1?' uses':'s use'} this style. Delete them first, then delete the style.`,1);return}
+  confirmBox('Delete this citation style?',`"${s.name}" and its ${count(s)} source types will be deleted.`,'Delete',async()=>{for(const t of S.type.filter(t=>t.citation_style_id===s.id))await del('type',t.id);await del('style',s.id);toast('Citation style deleted');render()})};
+ return h('div',{class:'page',id:'main'},h('div',{class:'dash'},h('div',{class:'row between wrap'},h('div',{class:'row wrap',style:'gap:16px'},btn('Back to Dashboard',()=>go('dashboard'),'','back'),h('h1',{style:'font-size:28px'},'Citation Styles')),btn('New Style',()=>styleDialog(),'pri','plus')),statusBar(),
+  S.style.length?h('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px'},S.style.map(s=>h('div',{class:'card pad row between',style:'align-items:flex-start'},h('div',{class:'grow'},h('b',{style:'font-size:16px;font-weight:600;overflow-wrap:anywhere'},s.name),s.description&&h('p',{class:'muted'},s.description),h('p',{class:'small muted',style:'margin-top:4px'},`${count(s)} source types · ${used(s)} citations`)),h('div',{class:'row',style:'gap:2px'},ibtn('gear',()=>go('source-types'),'Manage source types'),ibtn('edit',()=>styleDialog(s),'Edit citation style'),ibtn('trash',()=>remove(s),'Delete citation style','red')))))
+  :h('div',{class:'empty'},h('p',null,'No citation styles yet.'),h('div',{class:'row wrap',style:'justify-content:center'},btn('Add OSCOLA with its source types',addOscola,'pri','plus'),btn('Create my own style',()=>styleDialog())))))}
+function existingProject(){modal('Select Existing Project',(b,f,close)=>{
+ if(!S.library.length)b.append(h('div',{class:'empty'},h('p',null,'No projects yet. Create your first project!'),btn('Create New Project',()=>{close();G.mode='new';npName='';go('new-project')})));
+ else b.append(h('div',{class:'stack t'},S.library.map(l=>{const n=S.citation.filter(c=>c.library_id===l.id).length;return h('button',{type:'button',class:'pick row between',style:'border-color:var(--line)',onclick:()=>{G.library=l;close();const c=S.citation.find(c=>c.library_id===l.id);if(c)G.style=S.style.find(s=>s.id===c.citation_style_id)||null;render()}},h('span',null,h('b',{style:'display:block'},l.name),h('span',{class:'muted'},n+' citations')),icon('back'))})));
+ f.append(btn('Cancel',()=>{close();go('dashboard')}))},{width:640})}
+/* backup */
+function backupObj(){return{app:'LexCitr',exported:new Date().toISOString(),styles:S.style,source_types:S.type,citations:S.citation,libraries:S.library,pinpoints:S.pinpoint}}
+function exportData(){const a=h('a',{href:URL.createObjectURL(new Blob([JSON.stringify(backupObj(),null,2)],{type:'application/json'})),download:'lexcitr-backup.json'});document.body.append(a);a.click();a.remove();toast('Backup saved')}
+function importData(){const inp=h('input',{type:'file',accept:'.json,application/json',onchange:async()=>{const file=inp.files[0];if(!file)return;try{const d=JSON.parse(await file.text());const m={style:d.styles||d.CitationStyle,type:d.source_types||d.SourceType,citation:d.citations||d.Citation,library:d.libraries||d.Library,pinpoint:d.pinpoints||d.Pinpoint};let n=0;
+   if(!Object.values(m).some(Array.isArray))throw 0;
+   for(const k of KINDS)for(const x of (m[k]||[])){await put(k,clone(x));n++}
+   toast(`Restored ${n} records`);render()}catch(e){toast('That file is not a LexCitr backup. Choose a .json file made by Back up.',1)}}});inp.click()}
+/* generator shell */
+function generator(){
+ const step=stepNo(),lock=G.mode==='existing',s=G.style,t=G.type,lib=G.library;
+ const stepEl=(n,title,sub,cls,on)=>h(on?'button':'div',{type:on?'button':null,class:`step ${cls}${on?' click':''}`,onclick:on},h('span',{class:'num'},cls==='done'?'✓':String(n)),h('span',{class:'grow'},h('b',null,title),h('span',{class:'sub'},sub)));
+ const side=h('aside',{class:'side'+(G.sideOpen?' open':'')},
+  h('div',{class:'brand'},h('div',{class:'logo'},'📚'),h('div',null,h('h1',null,'Citation Generator'),h('p',null,'Format citations perfectly'))),
+  h('div',{class:'sidebody'},
+   lib&&lib.id!=='uncategorized'&&G.mode&&stepEl('✓','Project',lib.name,'done'),
+   stepEl(1,'Citation Style',s?s.name:'Choose a style',step===1?'act':s?'done':'',!lock?()=>{G.style=null;G.type=null;G.view='create';G.editing=null;render()}:null),
+   stepEl(2,'Source Type',t?t.name:'Choose source type',step===2?'act':step>2?'done':'off',s?()=>{G.type=null;G.view='create';G.editing=null;render()}:null),
+   stepEl(3,'Enter Details','Fill citation fields',step===3?'act':'off'),
+   h('div',{class:'sep'},
+    btn(`View All Citations (${S.citation.length})`,()=>{G.view='library';G.sideOpen=false;render()},(G.view==='library'?'pur':'')+' w left','lib'),
+    librariesPanel(),btn('Log Out',signOut,'w left red','export'))));
+ const main=h('main',{class:'main',id:'main'},h('div',{class:'inner'},statusBar(),h('div',null,btn('Back to Dashboard',()=>go('dashboard'),'','back')),
+   storeMode==='loading'&&!storeNote?h('p',{class:'muted'},'Loading your citations…'):G.view==='library'?libraryView():step===1?stylePicker():step===2?typePicker():step===3&&t?citationForm():null));
+ return h('div',{class:'layout'},ibtnMenu(),side,G.sideOpen&&h('div',{class:'scrim',onclick:()=>{G.sideOpen=false;render()}}),main)}
+const ibtnMenu=()=>h('button',{type:'button',class:'btn icon menu','aria-label':'Toggle menu',onclick:()=>{G.sideOpen=!G.sideOpen;render()}},icon(G.sideOpen?'x':'menu'));
+const COLORS=['gray','red','orange','yellow','green','blue','indigo','purple','pink'];
+const libStyle=c=>`background:var(--lib-${c});color:var(--lib-${c}-f);border-color:transparent`;
+function librariesPanel(){
+ const row=(l,count)=>h('div',{class:'lib'+(G.library&&G.library.id===l.id?' sel':''),style:libStyle(l.color||'indigo'),role:'button',tabIndex:0,onclick:()=>{G.library=l;render()},onkeydown:e=>{if(e.key==='Enter'&&e.target===e.currentTarget){G.library=l;render()}}},
+  h('div',{class:'row grow'},icon('lib'),h('div',{class:'grow'},h('div',{style:'font-weight:500'},l.name),l.description&&h('div',{class:'small',style:'opacity:.75'},l.description))),
+  count!=null?h('span',{class:'small',style:'font-weight:500'},count):h('div',{class:'acts'},ibtn('edit',e=>{e.stopPropagation();libraryDialog(l)},'Edit library'),ibtn('trash',e=>{e.stopPropagation();confirmBox('Delete library?',`"${l.name}" will be deleted. Its citations stay and move to Uncategorized.`,'Delete library',async()=>{for(const c of S.citation.filter(c=>c.library_id===l.id))await put('citation',{...c,library_id:null});await del('library',l.id);if(G.library&&G.library.id===l.id)G.library=null;toast('Library deleted');render()})},'Delete library','red')));
+ return h('div',{class:'stack t'},h('div',{class:'row between'},h('h3',{style:'font-size:14px;font-weight:600'},'Libraries'),btn('New Library',()=>libraryDialog(),'sm','plus')),
+  row({id:'uncategorized',name:'Uncategorized',color:'gray'},S.citation.filter(c=>!c.library_id).length),S.library.map(l=>row(l)))}
+function libraryDialog(l){const v={name:l?l.name:'',description:l?l.description||'':'',color:l?l.color||'indigo':'indigo'};
+ modal(l?'Edit Library':'Create Library',(b,f,close)=>{const ok=btn(l?'Update':'Create',()=>{put('library',{...(l||{}),...v,name:v.name.trim()}).then(x=>{toast(l?'Library updated':'Library created');if(!l)G.library=x;render();close()})},'pri','',{disabled:!v.name.trim()});
+  b.append(field('Library Name',h('input',{class:'in',id:'lib-name',value:v.name,placeholder:'e.g., Dissertation, Research Paper',oninput:e=>{v.name=e.target.value;ok.disabled=!v.name.trim()}})),field('Description (optional)',h('textarea',{class:'in',id:'lib-desc',value:v.description,placeholder:'What is this library for?',oninput:e=>v.description=e.target.value})),
+   field('Color',h('select',{class:'in',id:'lib-color',onchange:e=>v.color=e.target.value},COLORS.map(c=>h('option',{value:c,selected:c===v.color},c[0].toUpperCase()+c.slice(1))))));f.append(btn('Cancel',close),ok)})}
+/* step 1 and 2 */
+function stylePicker(){return h('div',{class:'stack'},h('div',{class:'row between wrap'},h('h2',{class:'h2'},'Select Citation Style'),btn('New Style',()=>styleDialog(),'sm','plus')),
+ S.style.length?h('div',{class:'tiles'},S.style.map(s=>h('button',{type:'button',class:'tile',onclick:()=>{G.style=s;G.type=null;render()}},icon('book'),h('b',null,s.name),s.description&&h('span',{class:'small muted'},s.description))))
+ :h('div',{class:'empty'},h('p',null,'No citation styles yet. A style holds the source types you cite, such as cases, journal articles and EU legislation.'),h('div',{class:'row wrap',style:'justify-content:center'},btn('Add OSCOLA with its source types',addOscola,'pri','plus'),btn('Create my own style',()=>styleDialog()))))}
+function styleDialog(old){const v={name:old?old.name:'',description:old?old.description||'':''};modal(old?'Edit Citation Style':'Create Citation Style',(b,f,close)=>{const ok=btn(old?'Update':'Create',()=>{put('style',{...(old||{}),name:v.name.trim(),description:v.description}).then(s=>{if(!old)G.style=s;toast(old?'Citation style updated':'Citation style created');close();render()})},'pri','',{disabled:!v.name.trim()});
+ b.append(field('Style Name',h('input',{class:'in',id:'style-name',value:v.name,placeholder:'e.g., OSCOLA, APA, MLA',oninput:e=>{v.name=e.target.value;ok.disabled=!v.name.trim()}})),field('Description (optional)',h('input',{class:'in',id:'style-desc',value:v.description,placeholder:'e.g., For legal citations',oninput:e=>v.description=e.target.value})));f.append(btn('Cancel',close),ok)})}
+function typePicker(){const list=S.type.filter(t=>t.citation_style_id===G.style.id);return h('div',{class:'stack'},h('div',{class:'row between wrap'},h('h2',{class:'h2'},'Select Source Type'),btn('New Source Type',()=>typeEditor(null,G.style.id),'sm','plus')),
+ list.length?h('div',{class:'tiles'},list.map(t=>h('div',{class:'tile',role:'button',tabIndex:0,onclick:()=>selectType(t),onkeydown:e=>{if(e.key==='Enter'&&e.target===e.currentTarget)selectType(t)}},h('div',{class:'acts'},ibtn('gear',e=>{e.stopPropagation();typeEditor(t,t.citation_style_id)},'Edit source type'),ibtn('trash',e=>{e.stopPropagation();del('type',t.id).then(()=>{toast('Source type deleted');render()})},'Delete source type','red')),icon('file'),h('b',null,t.name),h('span',{class:'small muted'},(t.fields||[]).length+' fields'))))
+ :h('div',{class:'empty'},h('p',null,'No source types for this style yet.'),btn('New Source Type',()=>typeEditor(null,G.style.id),'pri','plus')))}
+/* source type editor */
+function typeEditor(type,styleId){let name=type?type.name:'',fields=type?clone(type.fields||[]).sort(byOrder).map((f,i)=>({...f,order:i})):[];let dragId=null,popOpen=false;
+ const existing=()=>{const out=[],seen=new Set();S.type.forEach(t=>{if(type&&t.id===type.id)return;(t.fields||[]).forEach(f=>{const k=[f.name,f.prefix,f.suffix,f.infix].join('|');if(!seen.has(k)){seen.add(k);out.push({...f,from:t.name})}})});return out};
+ modal(type?'Edit Source Type':'Create Source Type',(b,foot,close,refresh)=>{
+  const newF=(o={})=>fields.push({id:uid(),name:'New Field',prefix:'',infix:'',suffix:'',italic:false,bold:false,order:fields.length,...o});
+  const chips=(f,key,vals)=>h('div',{class:'chips'},vals.map(v=>btn(v===' '?'␣':v===', '?',␣':v==='. '?'.␣':v,()=>{f[key]=(f[key]||'')+v;refresh()},'xs')),btn('Clear',()=>{f[key]='';refresh()},'xs red','',{disabled:!f[key]}));
+  const fieldBox=(f,i)=>{const box=h('div',{class:'ftype',draggable:false,ondragover:e=>{if(dragId){e.preventDefault();box.classList.add('over')}},ondragleave:()=>box.classList.remove('over'),ondrop:e=>{e.preventDefault();const from=fields.findIndex(x=>x.id===dragId);if(from>=0&&from!==i){const[m]=fields.splice(from,1);fields.splice(i,0,m);fields.forEach((x,n)=>x.order=n)}dragId=null;refresh()}},
+    h('div',{style:'padding:12px;display:flex;flex-direction:column;gap:8px'},
+     h('div',{class:'row'},
+      h('span',{class:'grip',title:'Drag to reorder',onmousedown:()=>box.draggable=true,ontouchstart:()=>{}},icon('grip')),
+      h('input',{class:'in grow',style:'min-height:34px',value:f.name,'aria-label':'Field name',placeholder:'Field name',oninput:e=>f.name=e.target.value}),
+      h('button',{type:'button',class:'tog s'+(f.italic?' on':''),title:'Italic',onclick:()=>{f.italic=!f.italic;refresh()}},h('i',null,'I')),
+      h('button',{type:'button',class:'tog s'+(f.bold?' on':''),title:'Bold',onclick:()=>{f.bold=!f.bold;refresh()}},h('b',null,'B')),
+      ibtn('up',()=>{if(i>0){[fields[i-1],fields[i]]=[fields[i],fields[i-1]];fields.forEach((x,n)=>x.order=n);refresh()}},'Move up'),
+      ibtn('down',()=>{if(i<fields.length-1){[fields[i+1],fields[i]]=[fields[i],fields[i+1]];fields.forEach((x,n)=>x.order=n);refresh()}},'Move down'),
+      ibtn('trash',()=>{fields=fields.filter(x=>x!==f);refresh()},'Remove field','red')),
+     h('div',{class:'chips',style:'margin:0 0 0 32px'},['/','-','(',')','[',']'].map(c=>btn(c,()=>{f.name+=c;refresh()},'xs'))),
+     h('div',{class:'fmtgrid',style:'border:0;padding:0'},
+      h('div',null,h('label',{class:'l s'},'Before (prefix)'),h('input',{class:'in mono',value:f.prefix||'',placeholder:'Add text/space before',oninput:e=>f.prefix=e.target.value}),chips(f,'prefix',['(','[','"',' '])),
+      h('div',null,h('label',{class:'l s'},'Middle (infix)'),h('input',{class:'in mono',value:f.infix||'',placeholder:'Text in middle',oninput:e=>f.infix=e.target.value}),chips(f,'infix',['/',' / ',' v ',' - '])),
+      h('div',null,h('label',{class:'l s'},'After (suffix)'),h('input',{class:'in mono',value:f.suffix||'',placeholder:'Add text/space after',oninput:e=>f.suffix=e.target.value}),chips(f,'suffix',[' ',', ','. ',')',']'])))));
+   box.addEventListener('dragstart',e=>{dragId=f.id;e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',f.id)}catch(x){}box.classList.add('drag')});box.addEventListener('dragend',()=>{dragId=null;box.draggable=false;box.classList.remove('drag')});return box};
+  const ex=existing();
+  if(!type)b.append(h('div',{class:'tmpl'},h('div',{class:'grow'},h('b',{style:'color:var(--accent-fg)'},'Start from a template'),h('div',{class:'small',style:'color:var(--accent-fg)'},'Use a pre-built source type as your starting point')),btn('Browse Templates',()=>templatePicker(t=>{name=t.name;fields=stamp(t.fields);refresh()}),'sm soft')));
+  b.append(field('Source Type Name',h('input',{class:'in',id:'type-name',value:name,placeholder:'e.g., EU Regulation, Treaty, Book',oninput:e=>{name=e.target.value;save.disabled=!name.trim()}})),
+   h('div',{class:'stack t'},h('div',{class:'row between wrap'},h('label',{class:'l',style:'margin:0'},'Citation Fields'),h('div',{class:'row wrap'},btn('Add Field',()=>{newF();refresh()},'sm','plus'),
+     ex.length>0&&h('span',{class:'popwrap'},btn('Add Existing Field',()=>{popOpen=!popOpen;refresh()},'sm','plus'),popOpen&&h('div',{class:'pop'},ex.map(x=>h('button',{type:'button',onclick:()=>{newF({name:x.name,italic:!!x.italic,bold:!!x.bold});popOpen=false;refresh()}},h('div',{style:'font-weight:500'},x.name),h('div',{class:'small muted'},'from '+x.from))))))),
+    fields.map(fieldBox),!fields.length&&h('div',{class:'empty'},h('p',null,'No fields yet'),btn('Add First Field',()=>{newF();refresh()},'sm','plus'))));
+  const save=btn('Save Source Type',async()=>{const data={...(type||{}),name,citation_style_id:styleId,fields:fields.map((f,i)=>({...f,order:i}))};try{save.disabled=true;const t=await put('type',data);
+    if(type)for(const c of S.citation.filter(c=>c.source_type_id===t.id))await put('citation',{...c,formatted_citation:format(t,c.field_values,c.custom_formatting,c.additional_info,c.additional_info_formatting,false),formatted_citation_html:format(t,c.field_values,c.custom_formatting,c.additional_info,c.additional_info_formatting,true)});
+    toast('Source type saved and citations updated');close();render()}catch(e){save.disabled=false}},'pri','save',{disabled:!name.trim()});
+  foot.append(btn('Cancel',close),save)},{width:760})}
+function templatePicker(onPick){let q='';modal('Choose a Template',(b,f,close)=>{const list=h('div',{class:'stack t'});const draw=()=>{const m=TEMPLATES.filter(t=>t.name.toLowerCase().includes(q)||t.style.toLowerCase().includes(q));list.replaceChildren(...m.map(t=>h('button',{type:'button',class:'pick',onclick:()=>{onPick(t);close()}},h('div',{class:'row between'},h('b',null,t.name),h('span',{class:'tag'},t.style)),h('div',{class:'small muted'},t.fields.map(x=>x.name).join(' · ')))));if(!m.length)list.append(h('p',{class:'muted',style:'text-align:center;padding:24px'},'No templates match your search.'))};
+ b.append(searchBox('Search templates...',v=>{q=v.toLowerCase();draw()}),list);draw()})}
+function searchBox(ph,on){return h('div',{style:'position:relative'},h('span',{style:'position:absolute;left:10px;top:10px;color:var(--faint)'},icon('search')),h('input',{class:'in',style:'padding-left:34px',placeholder:ph,'aria-label':ph,oninput:e=>on(e.target.value)}))}
+/* step 3 */
+function citationForm(){const t=G.type,F=G.form,lib=G.library;
+ const footText=()=>format(t,F.values,F.fmt,F.info,F.infoFmt,false),footHtml=()=>format(t,F.values,F.fmt,F.info,F.infoFmt,true);
+ const bv=()=>Object.keys(F.bib.values).length?F.bib.values:F.values,bf=()=>Object.keys(F.bib.fmt).length?F.bib.fmt:F.fmt,bi=()=>Object.keys(F.bib.info).length?F.bib.info:F.info;
+ const bibText=()=>format(t,bv(),bf(),bi(),F.bib.infoFmt,false,false),bibHtml=()=>format(t,bv(),bf(),bi(),F.bib.infoFmt,true,false);
+ const FM=f=>({...f,...(F.fmt[f.id]||{})});
+ const prevBox=h('div',{class:'preview cite'});const copyB=btn('Copy',async()=>{const x=footText();if(await copyRich(`<p style="${FOOT}">${footHtml()}</p>`,x))toast('Citation copied to clipboard')},'ghost sm','copy');
+ const genB=btn('Generate Footnote',()=>footnoteDialog(footText(),footHtml(),F.savedId||(G.editing&&G.editing.id)),'','file');
+ const canSave=()=>!(G.editing||F.savedId)||F.dirty;
+ const saveB=btn(G.editing||F.savedId?'Update Citation':'Save Citation',saveCitation,'pri','save');
+ const touch=()=>{F.dirty=true;updatePreview()};
+ function updatePreview(){const x=footHtml();prevBox.replaceChildren(h('div',x?{html:x}:{class:'muted',style:'font-style:italic;font-family:var(--ui);font-size:14px',textContent:'Fill in the fields below to see your citation...'}));copyB.disabled=genB.disabled=!x;saveB.disabled=!canSave()}
+ async function saveCitation(){const x=footText();if(!x){toast('Please fill in at least one field',1);return}if(!G.library){toast('Please select a library',1);return}
+  const id=(G.editing&&G.editing.id)||F.savedId,prev=id&&S.citation.find(c=>c.id===id)||{};
+  const c=await put('citation',{...prev,id,source_type_id:t.id,citation_style_id:G.style.id,library_id:G.library.id==='uncategorized'?null:G.library.id,field_values:F.values,custom_formatting:F.fmt,additional_info:F.info,additional_info_formatting:F.infoFmt,formatted_citation:x,formatted_citation_html:footHtml(),bibliography_field_values:F.bib.values,bibliography_custom_formatting:F.bib.fmt,bibliography_additional_info:F.bib.info,bibliography_additional_info_formatting:F.bib.infoFmt,formatted_bibliography:bibText(),formatted_bibliography_html:bibHtml(),notes:F.notes});
+  F.dirty=false;
+  if(id){toast('Citation updated');render();return}
+  F.savedId=c.id;render();savedDialog(c)}
+ /* field widgets */
+ const fieldHost=h('div',{class:'stack t',style:'gap:16px'});
+ const drawFields=()=>{fieldHost.replaceChildren(...(t.fields||[]).slice().sort(byOrder).filter(f=>!isExtra(f)).map(fieldWidget))};
+ const togs=(f,withSplit)=>{const m=FM(f);return h('div',{class:'row',style:'gap:4px'},
+   h('button',{type:'button',class:'tog'+(m.italic?' on':''),title:'Italic',onclick:()=>{setFmt(f,{italic:!m.italic})}},h('i',{style:'font-weight:600'},'I')),
+   h('button',{type:'button',class:'tog'+(m.bold?' on':''),title:'Bold',onclick:()=>{setFmt(f,{bold:!m.bold})}},h('b',null,'B')),
+   withSplit&&h('button',{type:'button',class:'tog'+(F.split[f.id]?' onp':''),title:'Split into two parts',onclick:()=>{F.split[f.id]=!F.split[f.id];drawFields()}},icon('split')),
+   h('button',{type:'button',class:'tog',title:'Punctuation around this field',onclick:()=>{F.gear[f.id]=!F.gear[f.id];drawFields()}},icon('gear')))};
+ const setFmt=(f,o)=>{F.fmt[f.id]={...(F.fmt[f.id]||{}),...o};touch();drawFields()};
+ function fieldWidget(f){const val=F.values[f.name]||'',isName=/author|editor/i.test(f.name),multi=F.multi[f.id],split=F.split[f.id];
+  const setV=v=>{F.values[f.name]=v;touch()};let ctl;
+  if(multi){const parts=val.split('|||');ctl=h('div',{class:'stack t'},parts.map((p,i)=>{const w=p.split(' ');const upd=(k,v)=>{const q=(parts[i]||'').split(' ');const a=[q[0]||'',q[1]||'',q.slice(2).join(' ')||''];a[k]=v;parts[i]=a.join(' ').trim();setV(parts.join('|||'))};
+     return h('div',{class:'row'},h('div',{class:'names grow'},['First name','Middle name/initial','Last name'].map((ph,k)=>h('input',{class:'in',placeholder:ph,'aria-label':ph,value:k<2?(w[k]||''):w.slice(2).join(' '),oninput:e=>upd(k,e.target.value)}))),parts.length>1&&ibtn('x',()=>{const n=parts.filter((_,x)=>x!==i);F.values[f.name]=n.join('|||');if(n.length===1)F.multi[f.id]=false;touch();drawFields()},'Remove author','red'))}),
+    h('div',null,btn('Add Another Author',()=>{F.values[f.name]=val+'|||';touch();drawFields()},'sm','plus')),togs(f))}
+  else if(isName){const w=val.split(' ');const np=F.names[f.id]||{first:w[0]||'',middle:w[1]||'',last:w.slice(2).join(' ')};F.names[f.id]=np;
+    ctl=h('div',{class:'stack t'},h('div',{class:'names'},[['first','First name'],['middle','Middle name/initial'],['last','Last name']].map(([k,ph])=>h('input',{class:'in',placeholder:ph,'aria-label':ph,value:np[k],oninput:e=>{np[k]=e.target.value;setV(`${np.first} ${np.middle} ${np.last}`.trim())}}))),togs(f,true))}
+  else if(split){const[a,b]=val.split('|');ctl=h('div',{class:'stack t'},h('div',{class:'row wrap'},h('input',{class:'in grow',style:'flex:1 1 180px',placeholder:'First part...',value:a||'',oninput:e=>{const r=(F.values[f.name]||'').split('|');setV(e.target.value+'|'+(r[1]||''))}}),h('span',{class:'muted',style:'font-family:monospace'},FM(f).infix||'|'),h('input',{class:'in grow',style:'flex:1 1 180px',placeholder:'Second part...',value:b||'',oninput:e=>{const r=(F.values[f.name]||'').split('|');setV((r[0]||'')+'|'+e.target.value)}})),togs(f,true))}
+  else ctl=h('div',{class:'stack t'},h('input',{class:'in',placeholder:`Enter ${f.name.toLowerCase()}...`,value:val,'aria-label':f.name,oninput:e=>setV(e.target.value)}),togs(f,true));
+  const m=FM(f);
+  return h('div',{class:'field'},h('div',{class:'row between wrap'},h('label',{class:'l',style:'margin:0'},f.name),isName&&!multi&&!split&&btn('Add Multiple Authors',()=>{F.multi[f.id]=true;F.values[f.name]=val+'|||';delete F.names[f.id];touch();drawFields()},'ghost sm','plus')),ctl,
+   h('div',{class:'chips',style:'margin:0'},['/','-','(',')','[',']'].map(c=>btn(c,()=>{F.values[f.name]=(F.values[f.name]||'')+c;delete F.names[f.id];touch();drawFields()},'xs'))),
+   F.gear[f.id]&&h('div',{class:'fmtgrid'},[['prefix','Before (prefix)',['(','[','"',' '],'before'],['infix','Middle (infix)',['/',' / ',' v ',' - '],'in middle'],['suffix','After (suffix)',[' ',', ','. ',')',']'],'after']].map(([k,lab,q,ph])=>h('div',null,h('label',{class:'l s'},lab),h('input',{class:'in mono',placeholder:'Text '+ph,value:m[k]||'',oninput:e=>{F.fmt[f.id]={...(F.fmt[f.id]||{}),[k]:e.target.value};touch()}}),h('div',{class:'chips'},q.map(c=>btn(c===' '?'␣':c===', '?',␣':c==='. '?'.␣':c,()=>setFmt(f,{[k]:(m[k]||'')+c}),'xs')),btn('Clear',()=>setFmt(f,{[k]:''}),'xs red','',{disabled:!m[k]}))))))}
+ const isBook=(t.name||'').toLowerCase().includes('book');
+ function infoBlock(){const SUF={translator:['tr','trans','translator'],editor:['ed','editor','eds'],edition:['edn','ed','1st edn','2nd edn','3rd edn'],year:['2024','2023','2022']},LAB={translator:'Translator',editor:'Editor',other:'Other Descriptive Information',edition:'Edition',publisher:'Publisher',year:'Year'};
+  const host=h('div',{class:'stack t'});const draw=()=>{host.replaceChildren(...INFO.filter(k=>!(k==='editor'&&t.name.toLowerCase().includes('edited'))).map(k=>{const fm=F.infoFmt[k]||{};const ctl=h('input',{class:'in',placeholder:`Enter ${LAB[k].toLowerCase()}...`,value:F.info[k]||'','aria-label':LAB[k],oninput:e=>{F.info[k]=e.target.value;touch()}});
+    return h('div',null,h('label',{class:'l s'},LAB[k]),h('div',{class:'row'},h('div',{class:'grow'},ctl),h('button',{type:'button',class:'tog'+(fm.italic?' on':''),title:'Italic',onclick:()=>{F.infoFmt[k]={...fm,italic:!fm.italic};touch();draw()}},h('i',null,'I')),h('button',{type:'button',class:'tog'+(fm.bold?' on':''),title:'Bold',onclick:()=>{F.infoFmt[k]={...fm,bold:!fm.bold};touch();draw()}},h('b',null,'B'))),
+     h('div',{class:'chips'},[' ','(',')','[',']',',','.'].map(c=>btn(c===' '?'␣':c,()=>{F.info[k]=(F.info[k]||'')+c;touch();draw()},'xs')),(SUF[k]||[]).map(c=>btn(c,()=>{F.info[k]=(F.info[k]?F.info[k]+' ':'')+c;touch();draw()},'xs'))))}))};draw();
+  return h('div',{style:'margin-top:24px;padding-top:24px;border-top:1px solid var(--line)'},h('label',{class:'l'},'Additional Information'),host)}
+ drawFields();updatePreview();
+ const footnoteTab=[h('div',{class:'card prevcard'},h('div',{class:'row between'},h('span',{class:'row muted',style:'font-weight:500;font-size:13px'},icon('eye'),'Live Preview'),copyB),prevBox),
+  h('div',{class:'card pad'},fieldHost,isBook&&infoBlock(),h('div',{style:'margin-top:24px;padding-top:24px;border-top:1px solid var(--line)'},h('label',{class:'l'},'Notes (optional)'),h('textarea',{class:'in',id:'cit-notes',value:F.notes,placeholder:'Add any notes about this citation...',oninput:e=>{F.notes=e.target.value;touch()}})))];
+ const tabs=h('div',{class:'tabs',role:'tablist'},[['footnote','Footnote Citation'],['bibliography','Bibliography Mode']].map(([k,l])=>h('button',{type:'button',role:'tab','aria-selected':F.tab===k?'true':'false',class:F.tab===k?'on':'',onclick:()=>{F.tab=k;render()}},l)));
+ return h('div',{class:'stack',style:'gap:24px'},
+  h('div',{class:'row between wrap'},h('h2',{class:'h2'},'Enter Citation Details'),h('div',{class:'row wrap'},btn('Import from DOI',()=>importDialog(t,r=>{Object.assign(F.values,r.values);Object.assign(F.info,r.info);Object.keys(r.values).forEach(k=>{const f=t.fields.find(x=>x.name===k);if(f&&r.values[k].includes('|||'))F.multi[f.id]=true});F.names={};F.dirty=true;render()}),'sm soft','import'),btn('Select Source Type',()=>{G.type=null;G.editing=null;render()},'sm','back'))),
+  field('Save to Library',h('select',{class:'in',id:'cit-lib','aria-label':'Save to Library',onchange:e=>{const v=e.target.value;G.library=v==='uncategorized'?{id:v,name:'Uncategorized',color:'gray'}:S.library.find(l=>l.id===v)||null;F.dirty=true;render()}},h('option',{value:'',selected:!lib},'Select a library...'),h('option',{value:'uncategorized',selected:lib&&lib.id==='uncategorized'},'Uncategorized'),S.library.map(l=>h('option',{value:l.id,selected:lib&&lib.id===l.id},l.name)))),
+  tabs,F.tab==='footnote'?footnoteTab:bibTab(t,F,bibHtml,bibText,()=>{F.dirty=true;saveB.disabled=!canSave()}),
+  h('div',{class:'row between wrap'},btn('Go to Citation Library',()=>{G.view='library';render()},'','lib'),h('div',{class:'row wrap'},genB,saveB)))}
+function bibTab(t,F,bibHtml,bibText,onDirty){const B=F.bib;
+ if(!Object.keys(B.values).length)B.values=clone(F.values);if(!Object.keys(B.fmt).length)B.fmt=clone(F.fmt);if(!Object.keys(B.info).length)B.info=clone(F.info);
+ const prev=h('div',{class:'preview cite',style:'font-size:14px'}),copy=btn('Copy',async()=>{if(await copyRich(`<p style="font-family: 'Times New Roman', Times, serif; font-size: 10pt; line-height: 1.5;">${bibHtml()}</p>`,bibText()))toast('Bibliography entry copied with formatting')},'ghost sm','copy');
+ const up=()=>{const x=bibHtml();prev.replaceChildren(h('div',x?{html:x}:{class:'muted',style:'font-style:italic;font-family:var(--ui)',textContent:'Fill in fields to see the bibliography entry…'}));copy.disabled=!x};
+ const FM=f=>({...f,...(B.fmt[f.id]||{})});const set=(f,o)=>{B.fmt[f.id]={...(B.fmt[f.id]||{}),...o};onDirty();up()};
+ const surname=v=>{if(!v||!v.trim())return v;const a=v.trim().split(/\s+/);if(a.length===1)return a[0];const l=a[a.length-1];return`${l}, ${a.slice(0,-1).map(s=>s[0].toUpperCase()).join(' ')}`};
+ const host=h('div',{class:'stack',style:'gap:14px'});const draw=()=>{host.replaceChildren(...(t.fields||[]).filter(f=>!isExtra(f)).sort(byOrder).map(f=>{const m=FM(f),isN=/author|editor/i.test(f.name),raw=B.values[f.name]||'',multi=raw.includes('|||'),shown=multi?raw.split('|||').filter(x=>x.trim()).join(' | '):raw;
+   return h('div',null,h('div',{class:'row between wrap'},h('label',{class:'l s',style:'margin:0'},f.name),h('div',{class:'row',style:'gap:4px'},isN&&btn('Surname, I',()=>{B.values[f.name]=raw.includes('|||')?raw.split('|||').map(x=>surname(x.trim())).join('|||'):surname(raw);onDirty();up();draw()},'xs softp','',{title:'Convert to Surname, Initials format'}),h('button',{type:'button',class:'tog s'+(m.italic?' onp':''),title:'Italic',onclick:()=>{set(f,{italic:!m.italic});draw()}},h('i',null,'I')),h('button',{type:'button',class:'tog s'+(m.bold?' onp':''),title:'Bold',onclick:()=>{set(f,{bold:!m.bold});draw()}},h('b',null,'B')))),
+    h('div',{class:'row',style:'margin-top:4px'},h('input',{class:'in grow',style:`min-height:34px;${m.italic?'font-style:italic;':''}${m.bold?'font-weight:700;':''}`,value:shown,placeholder:`Enter ${f.name.toLowerCase()}…`,'aria-label':f.name,oninput:e=>{B.values[f.name]=(B.values[f.name]||'').includes('|||')?e.target.value.split(' | ').join('|||'):e.target.value;onDirty();up()}}),h('input',{class:'in',style:'width:56px;min-height:34px;font-size:12px;text-align:center',title:'Prefix',placeholder:'pre',value:m.prefix||'',oninput:e=>set(f,{prefix:e.target.value})}),h('input',{class:'in',style:'width:56px;min-height:34px;font-size:12px;text-align:center',title:'Suffix',placeholder:'suf',value:m.suffix||'',oninput:e=>set(f,{suffix:e.target.value})})))}))};
+ const infoHost=h('div',{class:'stack t'});const drawI=()=>{infoHost.replaceChildren(...INFO.map(k=>{const fm=B.infoFmt[k]||{};return h('div',null,h('label',{class:'l s',style:'text-transform:capitalize'},k),h('div',{class:'row'},h('input',{class:'in grow',style:'min-height:34px',value:B.info[k]||'',placeholder:`Enter ${k}…`,'aria-label':k,oninput:e=>{B.info[k]=e.target.value;onDirty();up()}}),h('button',{type:'button',class:'tog s'+(fm.italic?' onp':''),title:'Italic',onclick:()=>{B.infoFmt[k]={...fm,italic:!fm.italic};onDirty();up();drawI()}},h('i',null,'I')),h('button',{type:'button',class:'tog s'+(fm.bold?' onp':''),title:'Bold',onclick:()=>{B.infoFmt[k]={...fm,bold:!fm.bold};onDirty();up();drawI()}},h('b',null,'B'))))}))};
+ draw();drawI();up();
+ return h('div',{class:'stack'},h('div',{class:'note'},'Customize field values and formatting specifically for the bibliography entry. Changes here do not affect the footnote citation.'),
+  h('div',{class:'card prevcard p'},h('div',{class:'row between'},h('span',{class:'row muted',style:'font-weight:500;font-size:13px'},icon('eye'),'Bibliography Preview'),copy),prev),
+  h('div',{class:'card pad stack'},h('div',{class:'row between wrap'},h('h3',{style:'font-size:14px;font-weight:600'},'Bibliography Fields'),btn('Reset to Footnote Values',()=>{B.values=clone(F.values);B.fmt=clone(F.fmt);B.info=clone(F.info);B.infoFmt={};onDirty();render();toast('Reset to footnote values')},'xs softp')),host),
+  t.name.toLowerCase().includes('book')&&h('div',{class:'card pad stack t'},h('h3',{style:'font-size:14px;font-weight:600'},'Additional Information'),infoHost))}
+function savedDialog(c){modal('Citation Saved',(b,f,close)=>{b.append(h('div',{class:'stack t'},btn('Copy Footnote',async()=>{if(await copyRich(`<p style="${FOOT}">${citeHtml(c)}</p>`,c.formatted_citation))toast('Footnote copied');close()},'pri w'),btn(`Citations in "${G.library&&G.library.name||'All Libraries'}"`,()=>{G.view='library';close();render()},'w'),btn('New Citation',()=>{G.type=null;G.editing=null;G.view='create';close();render()},'w')))},{width:420})}
+function footnoteDialog(text,html,citationId){let pin='';modal('Generate Footnote',(b,f,close)=>{const go2=async()=>{let t=text,x=html;if(pin.trim()){t=t.replace(/\.\s*$/,'')+', '+pin.trim()+'.';x=x.replace(/\.\s*$/,'')+', '+esc(pin.trim())+'.'}
+   if(await copyRich(`<p style="${FOOT}">${x}</p>`,t)){if(citationId)await put('pinpoint',{citation_id:citationId,pinpoint:pin.trim(),formatted_footnote:t});toast('Footnote copied with formatting');close();G.type=null;G.editing=null;render()}};
+  b.append(h('div',null,h('label',{class:'l'},'Pinpoint (optional)'),h('input',{class:'in',id:'fn-pin',placeholder:'e.g. para 12, art 3, p 45',oninput:e=>pin=e.target.value,onkeydown:e=>{if(e.key==='Enter')go2()}}),h('p',{class:'small muted',style:'margin-top:6px'},'If provided, the full stop will be replaced with ", pinpoint."')),btn('Generate Footnote',go2,'pri w','file'))},{width:440,titleIcon:'file'})}
+function importDialog(type,onDone){let doi='',busy=false,err='';modal('Import from DOI',(b,f,close,refresh)=>{
+ const run=async()=>{if(!doi.trim())return;busy=true;err='';refresh();try{const r=await crossrefLookup(doi,type);if(!Object.keys(r.values).length&&!Object.keys(r.info).length)throw 0;onDone(r);close();toast('Fields filled. Check them against your source.')}catch(e){err='No record was found for that DOI. Check it, or fill in the fields by hand.';busy=false;refresh()}};
+ b.append(h('p',{class:'muted'},'Fetches the details from Crossref. This covers journal articles and many books, but not cases or legislation.'),h('div',null,h('label',{class:'l',for:'imp-doi'},'DOI'),h('input',{class:'in',id:'imp-doi',value:doi,placeholder:'10.1093/... or https://doi.org/10.1093/...',oninput:e=>{doi=e.target.value;go2.disabled=busy||!doi.trim()},onkeydown:e=>{if(e.key==='Enter')run()}})),err&&h('div',{class:'err'},err));
+ const go2=btn(busy?'Fetching…':'Import',run,'pri','import',{disabled:busy||!doi.trim()});f.append(btn('Cancel',close,'','',{disabled:busy}),go2)},{titleIcon:'import'})}
+/* library */
+function libraryView(){const lib=G.library,list=lib&&lib.id==='uncategorized'?S.citation.filter(c=>!c.library_id):lib?S.citation.filter(c=>c.library_id===lib.id):S.citation;
+ return h('div',{class:'stack'},h('div',{class:'row between wrap'},h('h2',{class:'h2'},lib?(lib.id==='uncategorized'?'Uncategorized Citations':`${lib.name} Citations`):'All Citations'),lib&&btn('View All Citations',()=>{G.library=null;render()},'sm')),citationList(list,{onEdit:editCitation,onMove:true}))}
+function citationList(all,{onEdit,onMove}){
+ if(!all.length)return h('div',{class:'empty'},icon('file'),h('p',null,'No citations yet. Create your first citation above!'));
+ let q='';const host=h('div',{class:'stack',style:'gap:24px'}),open={};
+ const match=c=>!q||(c.formatted_citation||'').toLowerCase().includes(q)||typeName(c.source_type_id).toLowerCase().includes(q);
+ const draw=()=>{const m=all.filter(match),groups={};m.forEach(c=>{const n=typeName(c.source_type_id);(groups[n]=groups[n]||[]).push(c)});
+  host.replaceChildren(...(!m.length?[h('p',{class:'muted',style:'text-align:center;padding:24px'},'No citations match your search.')]:Object.entries(groups).map(([n,a])=>h('div',{class:'stack t',style:'gap:12px'},h('h3',{class:'grouph'},n),a.map(item)))))};
+ const item=c=>{let copied=false;const cb=ibtn('copy',async()=>{if(await copyRich(`<p style="${FOOT}">${citeHtml(c)}</p>`,c.formatted_citation)){toast('Citation copied with formatting');cb.replaceChildren(icon('check'));setTimeout(()=>cb.replaceChildren(icon('copy')),2000)}},'Copy citation');
+  let pop=null;const others=S.library.filter(l=>l.id!==c.library_id);const mv=onMove&&S.library.length>1&&h('span',{class:'popwrap'},ibtn('move',()=>{if(pop){pop.remove();pop=null;return}pop=h('div',{class:'pop'},h('div',{class:'small muted',style:'padding:6px 10px'},'Move to library'),others.map(l=>h('button',{type:'button',onclick:async()=>{await put('citation',{...c,library_id:l.id});toast(`Moved to "${l.name}"`);render()}},l.name)));mv.append(pop)},'Move to library'));
+  return h('div',{class:'card item'},h('div',{class:'grow'},h('div',{class:'row wrap',style:'margin-bottom:8px'},h('span',{class:'tag'},typeName(c.source_type_id)),S.library.length>0&&h('span',{class:'tag p'},libName(c.library_id)),h('span',{class:'small',style:'color:var(--faint)'},dateStr(c.created_date))),h('p',{class:'cite',html:citeHtml(c)}),
+    c.notes&&h('div',{style:'margin-top:6px'},btn('Notes',()=>{open[c.id]=!open[c.id];draw()},'ghost xs',open[c.id]?'up':'down'),open[c.id]&&h('p',{class:'small',style:'margin-top:6px;padding:8px;background:var(--surface2);border-radius:6px'},c.notes))),
+   h('div',{class:'acts'},cb,btn('Footnotes',()=>savedFootnotes(c),'ghost xs','file',{style:'color:var(--purple-fg)'}),mv,ibtn('edit',()=>onEdit(c),'Edit citation'),ibtn('trash',()=>del('citation',c.id).then(()=>{toast('Citation deleted');render()}),'Delete citation','red')))};
+ draw();
+ return h('div',{class:'stack',style:'gap:24px'},searchBox('Search citations...',v=>{q=v.toLowerCase();draw()}),h('div',{class:'row wrap',style:'justify-content:flex-end'},btn('Footnote',()=>pickFootnote(all),'soft','file'),btn('Generate Bibliography',()=>bibliographyDialog(all),'pur','book')),host)}
+function pickFootnote(all){let sel=null,pin='',q='';modal('Copy as Footnote',(b,f,close,refresh)=>{
+ const out=()=>{if(!sel)return'';const w=(sel.formatted_citation||'').replace(/\.\s*$/,'');return pin.trim()?`${w}, ${pin.trim()}`:sel.formatted_citation};
+ const list=h('div',{class:'scroll'});const prev=h('div',{class:'cite',style:'background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:14px'});
+ const draw=()=>{const m=all.filter(c=>!q||(c.formatted_citation||'').toLowerCase().includes(q)||typeName(c.source_type_id).toLowerCase().includes(q));list.replaceChildren(...(m.length?m.map(c=>h('button',{type:'button',class:'pick'+(sel&&sel.id===c.id?' on':''),onclick:()=>{sel=c;pin='';refresh()}},h('span',{class:'small',style:'display:block;color:var(--accent-fg);font-weight:500'},typeName(c.source_type_id)),c.formatted_citation)):[h('p',{class:'muted',style:'text-align:center;padding:16px'},'No citations match your search.')]))};
+ b.append(field('Select Citation',h('div',{class:'stack t'},searchBox('Search citations...',v=>{q=v.toLowerCase();draw()}),list)));draw();
+ if(sel){prev.textContent=out();b.append(h('div',null,h('label',{class:'l'},'Pinpoint ',h('span',{class:'muted',style:'font-weight:400'},'(optional)')),h('input',{class:'in',id:'pick-pin',value:pin,placeholder:'e.g. para 12, art 5, s 3(1)',oninput:e=>{pin=e.target.value;prev.textContent=out()}})),field('Preview',prev))}
+ const cp=btn('Copy Footnote',async()=>{const x=out();if(await copyRich(`<p style="${FOOT}">${esc(x)}</p>`,x)){await put('pinpoint',{citation_id:sel.id,pinpoint:pin.trim(),formatted_footnote:x});toast('Footnote copied')}},'pri','copy',{disabled:!sel});
+ f.append(btn('Cancel',close),cp)},{width:680})}
+function savedFootnotes(c){modal('Saved Footnotes',(b,f,close,refresh)=>{const list=S.pinpoint.filter(p=>p.citation_id===c.id);b.append(h('div',{class:'cite',style:'background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:12px',html:citeHtml(c)}));
+ if(!list.length)b.append(h('p',{class:'muted',style:'text-align:center;padding:20px'},'No footnotes saved for this citation yet.'));
+ list.forEach(p=>b.append(h('div',{class:'row',style:'align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:12px'},h('div',{class:'grow'},p.pinpoint&&h('span',{class:'small',style:'display:block;color:var(--accent-fg);font-weight:500'},'Pinpoint: '+p.pinpoint),h('p',{class:'cite'},p.formatted_footnote),h('p',{class:'small',style:'color:var(--faint)'},dateStr(p.created_date))),ibtn('copy',async()=>{if(await copyRich(`<p style="${FOOT}">${esc(p.formatted_footnote)}</p>`,p.formatted_footnote))toast('Footnote copied')},'Copy footnote'),ibtn('trash',()=>{del('pinpoint',p.id).then(()=>{toast('Footnote deleted');refresh()})},'Delete footnote','red'))));
+ f.append(btn('Close',close))},{width:680,titleIcon:'file'})}
+function bibliographyDialog(all){let sel=[],q='';modal('Generate Bibliography',(b,f,close)=>{const count=h('div',{class:'muted'}),tog=btn('',()=>{sel=sel.length===all.length?[]:all.map(c=>c.id);draw()},'sm'),list=h('div',{class:'stack t',style:'max-height:350px;overflow-y:auto'});
+ const gen=btn('Generate Bibliography',async()=>{if(!sel.length){toast('Please select at least one citation',1);return}const r=buildBibliography(all.filter(c=>sel.includes(c.id)));if(await copyRich(r.html,r.text)){toast('Bibliography copied with formatting');close()}},'pri','check');
+ const draw=()=>{count.textContent=`${sel.length} of ${all.length} citations selected`;tog.textContent=sel.length===all.length?'Deselect All':'Select All';gen.disabled=!sel.length;
+  const m=all.filter(c=>!q||(c.formatted_citation||'').toLowerCase().includes(q)||typeName(c.source_type_id).toLowerCase().includes(q)),groups={};m.forEach(c=>{const n=typeName(c.source_type_id);(groups[n]=groups[n]||[]).push(c)});
+  list.replaceChildren(...(m.length?Object.entries(groups).map(([n,a])=>h('div',{class:'stack t'},h('h3',{class:'grouph'},n),a.map(c=>h('label',{class:'row',style:'align-items:flex-start;border:1px solid var(--line);border-radius:8px;padding:12px;cursor:pointer'},h('input',{type:'checkbox',checked:sel.includes(c.id),style:'margin-top:3px',onchange:()=>{sel=sel.includes(c.id)?sel.filter(x=>x!==c.id):[...sel,c.id];draw()}}),h('span',{class:'grow'},c.formatted_citation))))):[h('p',{class:'muted',style:'text-align:center;padding:24px'},'No citations match your search.')]))};
+ b.append(searchBox('Search citations...',v=>{q=v.toLowerCase();draw()}),h('div',{class:'row between wrap',style:'border-bottom:1px solid var(--line);padding-bottom:12px'},count,tog),list);draw();f.append(btn('Cancel',close,'','x'),gen)},{width:860,titleIcon:'file'})}
+/* standalone pages */
+function allPage(){return h('div',{class:'page',id:'main'},h('div',{class:'dash'},h('div',{class:'row wrap',style:'gap:16px'},btn('Back to Dashboard',()=>go('dashboard'),'','back'),h('h1',{style:'font-size:28px'},'All Citations')),statusBar(),citationList(S.citation,{onEdit:editCitation})))}
+function typesPage(){const groups=S.style.map(s=>({s,types:S.type.filter(t=>t.citation_style_id===s.id)}));
+ return h('div',{class:'page',id:'main'},h('div',{class:'dash'},h('div',{class:'row between wrap'},h('div',{class:'row wrap',style:'gap:16px'},btn('Back to Dashboard',()=>go('dashboard'),'','back'),h('h1',{style:'font-size:28px'},'Source Types')),S.style.length>0&&btn('New Source Type',()=>typeEditor(null,S.style[0].id),'pri','plus')),statusBar(),
+  !groups.length?h('div',{class:'empty'},h('p',null,'No citation styles created yet'),btn('Add OSCOLA with its source types',async()=>{await addOscola();go('source-types')},'pri','plus'),btn('Go to Dashboard',()=>go('dashboard'))):
+  groups.map(({s,types})=>h('div',{class:'stack'},h('h2',{style:'font-size:20px;font-weight:600'},s.name),types.length?h('div',{style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px'},types.map(t=>h('div',{class:'card pad row between',style:'align-items:flex-start'},h('div',{class:'grow'},h('b',{style:'font-size:16px;font-weight:600;overflow-wrap:anywhere'},t.name),h('p',{class:'muted'},(t.fields||[]).length+' fields')),h('div',{class:'row',style:'gap:2px'},ibtn('edit',()=>typeEditor(t,t.citation_style_id),'Edit source type'),ibtn('trash',()=>confirmBox('Delete this source type?',`"${t.name}" will be deleted.`,'Delete',()=>del('type',t.id).then(()=>{toast('Source type deleted');render()})),'Delete source type','red'))))):h('div',{class:'empty'},h('p',null,'No source types for this style yet'))))))}
+
+async function start(){storeMode='loading';render();try{await loadAll()}catch(e){storeMode='db';storeNote='Your citations could not be loaded. Check your connection and reload the page.'}render()}
+window.addEventListener('focus',async()=>{if(!currentUser||storeMode==='loading')return;try{await loadAll();requestRender()}catch(e){}});
+(async()=>{const u=await getUser();if(u)start();else document.getElementById('app').replaceChildren(authView(start))})();
