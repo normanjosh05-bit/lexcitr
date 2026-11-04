@@ -194,3 +194,4 @@ label.l.s{font-size:12px;color:var(--muted);font-weight:400}
 .tp .modal .mb{padding:8px 14px}.tp-back b:empty{display:none}
 .overlay{padding:10px}
 .tp-citacts{flex-wrap:nowrap;gap:2px}.tp-citacts .btn.icon{width:26px;min-height:28px}.tp-citacts .btn.sm{padding:3px 8px}
+.site-cit{padding:16px;display:flex;flex-direction:column;gap:10px}.chipx{border:0;background:transparent;color:inherit;cursor:pointer;padding:0 2px;font-size:14px;line-height:1}

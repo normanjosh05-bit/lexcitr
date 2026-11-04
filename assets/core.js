@@ -19,20 +19,20 @@ async function copyRich(html,text){
 }
 /* ---------- data store: one row per record in Supabase, private to each account ---------- */
 const sb=supabase.createClient(LEXCITR_CONFIG.SUPABASE_URL,LEXCITR_CONFIG.SUPABASE_KEY);
-const KINDS=['style','type','citation','library','pinpoint'];
-const S={style:[],type:[],citation:[],library:[],pinpoint:[]};
+const KINDS=['style','type','citation','library','pinpoint','document'];
+const S={style:[],type:[],citation:[],library:[],pinpoint:[],document:[]};
 let storeMode='loading',storeNote='',currentUser=null;
 const sortAll=()=>{KINDS.forEach(k=>S[k].sort((a,b)=>String(a.created_date).localeCompare(String(b.created_date))));S.citation.reverse()};
 const safeId=s=>String(s).replace(/[^A-Za-z0-9_\-]/g,'-').slice(0,120);
 async function getUser(){const{data}=await sb.auth.getSession();currentUser=data.session?data.session.user:null;return currentUser}
-async function loadAll(){const next={style:[],type:[],citation:[],library:[],pinpoint:[]};const size=1000;
+async function loadAll(){const next={style:[],type:[],citation:[],library:[],pinpoint:[],document:[]};const size=1000;
  for(let from=0;;from+=size){const{data,error}=await sb.from('records').select('kind,data').order('id').range(from,from+size-1);if(error)throw error;data.forEach(r=>{if(next[r.kind])next[r.kind].push(r.data)});if(data.length<size)break}
  KINDS.forEach(k=>S[k]=next[k]);sortAll();storeMode='db';storeNote=''}
-async function put(kind,item){
+async function put(kind,item,opt={}){
  if(!item.id)item.id=uid();item.id=safeId(item.id);if(!item.created_date)item.created_date=new Date().toISOString();
  const i=S[kind].findIndex(x=>x.id===item.id);if(i>=0)S[kind][i]=item;else S[kind].push(item);sortAll();
  const{error}=await sb.from('records').upsert({user_id:currentUser.id,id:kind+'_'+item.id,kind,data:JSON.parse(JSON.stringify(item)),updated_at:new Date().toISOString()},{onConflict:'user_id,id'});
- if(error){toast('Could not save. Check your connection and try again.',1);throw error}
+ if(error){if(!opt.quiet)toast('Could not save. Check your connection and try again.',1);throw error}
  return item}
 async function del(kind,id){S[kind]=S[kind].filter(x=>x.id!==id);const{error}=await sb.from('records').delete().eq('user_id',currentUser.id).eq('id',kind+'_'+id);if(error)toast('Could not delete. Check your connection and try again.',1)}
 async function signOut(){await sb.auth.signOut();location.reload()}
@@ -63,6 +63,14 @@ async function crossrefLookup(doi,type){const clean=doi.trim().replace(/^https?:
  const info={};if((type.name||'').toLowerCase().includes('book')){if(m.publisher)info.publisher=m.publisher;if(year)info.year=year}
  return{values,info}}
 /* ---------- citation formatting ---------- */
+function withPin(html,text,pin){const p=(pin||'').trim();if(!p)return{html,text};return{html:html.replace(/[.\s]*$/,'')+', '+esc(p)+'.',text:String(text||'').replace(/[.\s]*$/,'')+', '+p+'.'}}
+const someKeys=o=>o&&Object.keys(o).length>0;
+const sameJson=(a,b)=>{const n=o=>JSON.stringify(Object.keys(o||{}).filter(k=>o[k]).sort().map(k=>[k,o[k]]));return n(a)===n(b)};
+function bibCustom(c){if(c.bibliography_customised!==undefined)return!!c.bibliography_customised;
+ if(someKeys(c.bibliography_field_values)&&!sameJson(c.bibliography_field_values,c.field_values))return true;
+ if(someKeys(c.bibliography_custom_formatting)&&!sameJson(c.bibliography_custom_formatting,c.custom_formatting))return true;
+ if(someKeys(c.bibliography_additional_info)&&!sameJson(c.bibliography_additional_info,c.additional_info))return true;
+ return Object.values(c.bibliography_additional_info_formatting||{}).some(f=>f&&(f.italic||f.bold))}
 const isExtra=f=>f.name.toLowerCase().includes('additional information');
 const byOrder=(a,b)=>(a.order||0)-(b.order||0);
 const INFO=['translator','editor','other','edition','publisher','year'];
@@ -88,6 +96,7 @@ const citeHtml=c=>{const t=typeOf(c);return t&&c.field_values?format(t,c.field_v
 function nameParts(n){const o=n.trim().split(' ').filter(Boolean);if(!o.length)return{last:'',initials:''};if(o.length===1)return{last:o[0],initials:''};const last=o.length>=3?o.slice(2).join(' '):o[o.length-1];const ini=(o.length>=3?o.slice(0,2):o.slice(0,1)).map(x=>x.charAt(0).toUpperCase()).join('');return{last,initials:ini}}
 function authorList(v,comma=true){const a=(v.includes('|||')?v.split('|||'):[v]).map(x=>x.trim()).filter(Boolean).map(nameParts);a.sort((x,y)=>x.last.localeCompare(y.last));const T=({last,initials})=>`${last} ${initials}`.trim(),B=comma?',':'';return a.length===1?`${T(a[0])}${B}`:a.length===2?`${T(a[0])} and ${T(a[1])}${B}`:a.length===3?`${T(a[0])}, ${T(a[1])} and ${T(a[2])}${B}`:`${T(a[0])} and others${B}`}
 function bibEntry(c){
+ if(bibCustom(c)&&typeOf(c)){const pick=(a,b)=>someKeys(a)?a:b;return format(typeOf(c),pick(c.bibliography_field_values,c.field_values),pick(c.bibliography_custom_formatting,c.custom_formatting),pick(c.bibliography_additional_info,c.additional_info),c.bibliography_additional_info_formatting||{},true,false)}
  const n=typeName(c.source_type_id).toLowerCase(),t=typeOf(c),vals=c.field_values||{};
  const isShort=x=>x.toLowerCase().includes('short title');
  const fs=(t&&t.fields||[]).slice().sort(byOrder);
