@@ -110,6 +110,7 @@ function bibSortKey(c){const n=typeName(c.source_type_id).toLowerCase(),t=typeOf
  if(f&&v[f.name])return key(v[f.name]);return String(Object.values(v)[0]||'').toLowerCase()}
 function groupName(name){const l=name.toLowerCase();return{'eu treaty':'EU Primary Law','eu case':'EU Case Law','south african case':'South African Case Law','icsid arbitration':'ICSID Arbitration','icj case':'ICJ Cases','icj cases':'ICJ Cases','icj advisory opinion':'ICJ Advisory Opinions','unga resolution':'UNGA Resolutions'}[l]||name}
 function buildBibliography(list){
+ const seenBib=new Set();list=list.filter(x=>{const k=String(x.formatted_citation||x.id).replace(/\s+/g,' ').trim().toLowerCase();if(seenBib.has(k))return false;seenBib.add(k);return true});
  const groups={};list.forEach(c=>{const g=groupName(typeName(c.source_type_id));(groups[g]=groups[g]||[]).push(c)});
  Object.values(groups).forEach(a=>a.sort((x,y)=>bibSortKey(x).localeCompare(bibSortKey(y))));
  const has=(s,arr)=>arr.some(x=>s.includes(x));const eu={},sa={},intl={},inst={},sec={},books={};
